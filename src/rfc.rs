@@ -2,6 +2,7 @@ use dlopen::wrapper::{Container, WrapperApi};
 use std::marker::PhantomData;
 use std::ptr::null_mut;
 
+use std::convert::TryInto;
 use std::cmp::min;
 use widestring::U16CString;
 
@@ -613,6 +614,21 @@ impl<'conn, 'strct: 'conn> RfcParameter<'conn, 'strct> {
         Ok(())
     }
 
+    pub fn set_date(&mut self, value: &str) -> Result<(), RfcErrorInfo> {
+        if !self.direction.can_write() {
+            return Err(RfcErrorInfo::custom("Read-only parameter"));
+        }
+        let mut err_trunk = RfcErrorInfo::new();
+        let Ok(mut date_ptr): Result<[u8; 8],_> = value.as_bytes().try_into() else {
+            return Err(RfcErrorInfo::custom("Read-only parameter"));
+        };
+        let res = unsafe { self.rfc_api.RfcSetDateByIndex(self.fun, self.index, &mut date_ptr as *mut _, &mut err_trunk) };
+        if !res.is_ok() {
+            return Err(err_trunk);
+        }
+        Ok(())
+    }
+
     pub fn get_chars(&self) -> Result<String, RfcErrorInfo> {
         if !self.direction.can_read() {
             return Err(RfcErrorInfo::custom("Read-only parameter"));
@@ -889,6 +905,14 @@ pub struct RfcApi {
         value: *mut u8,
         buflen: u32,
         reslen: *mut u32,
+        error: *mut RfcErrorInfo,
+    ) -> RfcRc,
+
+    #[allow(non_snake_case)]
+    RfcSetDateByIndex: unsafe extern "C" fn(
+        fun: *const RfcDataContainerHandle,
+        index: u32,
+        value: *mut [u8; 8],
         error: *mut RfcErrorInfo,
     ) -> RfcRc,
 
